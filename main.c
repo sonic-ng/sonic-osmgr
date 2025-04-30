@@ -21,7 +21,7 @@
 
 xdb_conn_t	*g_pConn;
 
-static int port_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row_t *pNewRow, xdb_row_t *pOldRow, void *pArg, bool bRollback)
+static int port_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row_t *pNewRow, xdb_row_t *pOldRow, void *pArg)
 {
 	const char *ifname;
 	xdb_res_t *pRes2;
@@ -47,7 +47,7 @@ static int port_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row
 	return 0;
 }
 
-static int intf_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row_t *pNewRow, xdb_row_t *pOldRow, void *pArg, bool bRollback)
+static int intf_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row_t *pNewRow, xdb_row_t *pOldRow, void *pArg)
 {
 	const char *ifname;
 	xdb_res_t *pRes2;
@@ -95,18 +95,18 @@ static int intf_trig (xdb_conn_t *pConn, xdb_res_t *pRes, uint32_t type, xdb_row
 static int interface_dump ()
 {
 	xdb_res_t	*pRes;
-    struct ifaddrs *ifaddr, *ifa;
-    int exists = 0;
+	struct ifaddrs *ifaddr, *ifa;
+	int exists = 0;
 
-    if (getifaddrs(&ifaddr) == -1) {
-        perror("getifaddrs");
-        return -1;
-    }
+	if (getifaddrs(&ifaddr) == -1) {
+		perror("getifaddrs");
+		return -1;
+	}
 
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_name == NULL) {
-            continue;
-        }
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_name == NULL) {
+			continue;
+		}
 		int family = ifa->ifa_addr->sa_family;
 		printf("%-8s %s (%d)\n",
 			   ifa->ifa_name,
@@ -118,84 +118,84 @@ static int interface_dump ()
 			pRes = xdb_bexec (g_pConn, "INSERT INTO osmgr.intf (ifname) VALUES (?)", ifa->ifa_name);
 			XDB_RESCHK (pRes, "");
 		}
-    }
+	}
 
-    freeifaddrs(ifaddr);
-    return exists;
+	freeifaddrs(ifaddr);
+	return exists;
 }
 
 #define BUFFER_SIZE 8192
 
 void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
 {
-    memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
-    while (RTA_OK(rta, len)) {
-        if (rta->rta_type <= max)
-            tb[rta->rta_type] = rta;
-        rta = RTA_NEXT(rta, len);
-    }
+	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
+	while (RTA_OK(rta, len)) {
+		if (rta->rta_type <= max)
+			tb[rta->rta_type] = rta;
+		rta = RTA_NEXT(rta, len);
+	}
 }
 
 static void *interface_netlink() 
 {
 	xdb_res_t	*pRes;
-    int sock_fd;
-    struct sockaddr_nl sa;
-    struct nlmsghdr *nh;
-    char buffer[BUFFER_SIZE];
-    struct iovec iov = { buffer, sizeof(buffer) };
-    struct msghdr msg = { (void*)&sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+	int sock_fd;
+	struct sockaddr_nl sa;
+	struct nlmsghdr *nh;
+	char buffer[BUFFER_SIZE];
+	struct iovec iov = { buffer, sizeof(buffer) };
+	struct msghdr msg = { (void*)&sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
 
-    // Create a Netlink socket
-    sock_fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-    if (sock_fd < 0) {
-        perror("socket");
-        return NULL;
-    }
+	// Create a Netlink socket
+	sock_fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (sock_fd < 0) {
+		perror("socket");
+		return NULL;
+	}
 
-    // Initialize the sockaddr_nl structure
-    memset(&sa, 0, sizeof(sa));
-    sa.nl_family = AF_NETLINK;
-    sa.nl_groups = RTMGRP_LINK;
+	// Initialize the sockaddr_nl structure
+	memset(&sa, 0, sizeof(sa));
+	sa.nl_family = AF_NETLINK;
+	sa.nl_groups = RTMGRP_LINK;
 
-    // Bind the socket
-    if (bind(sock_fd, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
-        perror("bind");
-        close(sock_fd);
-        return NULL;
-    }
+	// Bind the socket
+	if (bind(sock_fd, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+		perror("bind");
+		close(sock_fd);
+		return NULL;
+	}
 
-    // Listen for messages
-    while (1) {
-        ssize_t len = recvmsg(sock_fd, &msg, 0);
-        if (len < 0) {
-            perror("recvmsg");
-            close(sock_fd);
-            return NULL;
-        }
+	// Listen for messages
+	while (1) {
+		ssize_t len = recvmsg(sock_fd, &msg, 0);
+		if (len < 0) {
+			perror("recvmsg");
+			close(sock_fd);
+			return NULL;
+		}
 
-        for (nh = (struct nlmsghdr*)buffer; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
-            if (nh->nlmsg_type == NLMSG_DONE) {
-                break;
-            } else if (nh->nlmsg_type == RTM_NEWLINK) {
+		for (nh = (struct nlmsghdr*)buffer; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+			if (nh->nlmsg_type == NLMSG_DONE) {
+				break;
+			} else if (nh->nlmsg_type == RTM_NEWLINK) {
 				struct rtattr *tb[IFLA_MAX + 1];
 				struct ifinfomsg *ifi;
-                ifi = NLMSG_DATA(nh);
-                parse_rtattr(tb, IFLA_MAX, IFLA_RTA(ifi), nh->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi)));
-                if (tb[IFLA_IFNAME]) {
+				ifi = NLMSG_DATA(nh);
+				parse_rtattr(tb, IFLA_MAX, IFLA_RTA(ifi), nh->nlmsg_len - NLMSG_LENGTH(sizeof(*ifi)));
+				if (tb[IFLA_IFNAME]) {
 					const char *ifname = (char*)RTA_DATA(tb[IFLA_IFNAME]);
-                    printf("New network interface created: %s\n", ifname);
+					printf("New network interface created: %s\n", ifname);
 					pRes = xdb_bexec (g_pConn, "INSERT INTO osmgr.intf (ifname) VALUES (?)", ifname);
 					XDB_RESCHK (pRes, "");
-                } else {
-               		printf("Network interface created name not found\n");
-                }
-            }
-        }
-    }
+				} else {
+			   		printf("Network interface created name not found\n");
+				}
+			}
+		}
+	}
 
-    close(sock_fd);
-    return NULL;
+	close(sock_fd);
+	return NULL;
 }
 
 int main (int argc, char **argv)
